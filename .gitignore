@@ -1,0 +1,32 @@
+# Firebase
+xrayapp/android/app/google-services.json
+xrayapp/lib/firebase_options.dart
+xrayapp/android/key.properties
+*.jks
+*.keystore
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+.packages
+build/
+ios/Pods/
+ios/Runner.xcworkspace/
+ios/.symlinks/
+macos/.symlinks/
+
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+*.egg-info
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
