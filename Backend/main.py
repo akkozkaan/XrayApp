@@ -1,6 +1,7 @@
 import os
 import base64
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Header
+from fastapi.responses import JSONResponse
 import httpx
 from google import genai
 from google.genai import types
@@ -12,6 +13,46 @@ MODAL_URL = "https://y20035241--xray-sota-engine-xrayengine-predict.modal.run"
 
 # Vercel Environment Variable
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY")
+DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+ALLOWED_CONTENT_TYPE_PREFIX = "image/"
+
+try:
+    MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", DEFAULT_MAX_UPLOAD_BYTES))
+except ValueError:
+    MAX_UPLOAD_BYTES = DEFAULT_MAX_UPLOAD_BYTES
+
+if MAX_UPLOAD_BYTES <= 0:
+    MAX_UPLOAD_BYTES = DEFAULT_MAX_UPLOAD_BYTES
+
+def error_response(status_code: int, message: str):
+    return JSONResponse(
+        status_code=status_code,
+        content={"success": False, "error": message}
+    )
+
+def authorize_request(x_api_key: str | None):
+    if not BACKEND_API_KEY:
+        return error_response(503, "Server auth is not configured.")
+    if not x_api_key:
+        return error_response(401, "Missing API key.")
+    if x_api_key != BACKEND_API_KEY:
+        return error_response(403, "Invalid API key.")
+    return None
+
+async def read_upload_limited(file: UploadFile, max_bytes: int) -> bytes | None:
+    total = 0
+    chunks = []
+    chunk_size = 1024 * 1024
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 async def generate_ai_message(mode: str, findings_data, heatmap_b64: str, lang: str) -> str:
     """Passes the Grad-CAM image and the exact percentiles to the VLM for a natural language summary."""
@@ -71,7 +112,11 @@ def read_root():
     return {"status": "VLM AI Active!"}
 
 @app.get("/warmup")
-async def warmup_server():
+async def warmup_server(x_api_key: str | None = Header(default=None, alias="X-API-KEY")):
+    auth_error = authorize_request(x_api_key)
+    if auth_error:
+        return auth_error
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             await client.post(MODAL_URL, content=b"")
@@ -83,9 +128,21 @@ async def warmup_server():
 async def analyze_image(
     file: UploadFile = File(...), 
     mode: str = Form("chest"),
-    lang: str = Form("en")
+    lang: str = Form("en"),
+    x_api_key: str | None = Header(default=None, alias="X-API-KEY")
 ):
-    content = await file.read()
+    auth_error = authorize_request(x_api_key)
+    if auth_error:
+        return auth_error
+
+    if not file.content_type or not file.content_type.startswith(ALLOWED_CONTENT_TYPE_PREFIX):
+        return error_response(415, "Only image uploads are allowed.")
+
+    content = await read_upload_limited(file, MAX_UPLOAD_BYTES)
+    if content is None:
+        return error_response(413, f"File too large. Max allowed is {MAX_UPLOAD_BYTES} bytes.")
+    if not content:
+        return error_response(400, "Uploaded file is empty.")
     
     # 1. Talk to Modal (Get the math and the image)
     async with httpx.AsyncClient(timeout=55.0) as client:
