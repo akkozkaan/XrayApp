@@ -1,5 +1,6 @@
 import os
 import base64
+import secrets
 from fastapi import FastAPI, UploadFile, File, Form, Header
 from fastapi.responses import JSONResponse
 import httpx
@@ -37,7 +38,9 @@ def authorize_request(api_key: str | None):
         return error_response(503, "Server auth is not configured.")
     if not api_key:
         return error_response(401, "Missing API key.")
-    if api_key != BACKEND_API_KEY:
+    expected_key = str(BACKEND_API_KEY)
+    provided_key = str(api_key)
+    if not secrets.compare_digest(provided_key, expected_key):
         return error_response(403, "Invalid API key.")
     return None
 
@@ -53,6 +56,19 @@ async def read_upload_limited(file: UploadFile, max_bytes: int) -> bytes | None:
             return None
         chunks.append(chunk)
     return b"".join(chunks)
+
+def is_supported_image_content(content: bytes) -> bool:
+    if len(content) < 4:
+        return False
+
+    return (
+        content.startswith(b"\xFF\xD8\xFF")  # JPEG
+        or content.startswith(b"\x89PNG\r\n\x1a\n")  # PNG
+        or content.startswith((b"GIF87a", b"GIF89a"))  # GIF
+        or content.startswith(b"BM")  # BMP
+        or content.startswith((b"II*\x00", b"MM\x00*"))  # TIFF
+        or (len(content) > 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP")  # WEBP
+    )
 
 async def generate_ai_message(mode: str, findings_data, heatmap_b64: str, lang: str) -> str:
     """Passes the Grad-CAM image and the exact percentiles to the VLM for a natural language summary."""
@@ -143,6 +159,8 @@ async def analyze_image(
         return error_response(413, f"File too large. Max allowed is {MAX_UPLOAD_BYTES} bytes.")
     if not content:
         return error_response(400, "Uploaded file is empty.")
+    if not is_supported_image_content(content):
+        return error_response(415, "Uploaded file content is not a supported image format.")
     
     # 1. Talk to Modal (Get the math and the image)
     async with httpx.AsyncClient(timeout=55.0) as client:
