@@ -16,6 +16,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 BACKEND_API_KEY = os.environ.get("BACKEND_API_KEY")
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_CONTENT_TYPE_PREFIX = "image/"
+CHUNK_SIZE_BYTES = 1024 * 1024
 
 try:
     MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", DEFAULT_MAX_UPLOAD_BYTES))
@@ -31,21 +32,20 @@ def error_response(status_code: int, message: str):
         content={"success": False, "error": message}
     )
 
-def authorize_request(x_api_key: str | None):
+def authorize_request(api_key: str | None):
     if not BACKEND_API_KEY:
         return error_response(503, "Server auth is not configured.")
-    if not x_api_key:
+    if not api_key:
         return error_response(401, "Missing API key.")
-    if x_api_key != BACKEND_API_KEY:
+    if api_key != BACKEND_API_KEY:
         return error_response(403, "Invalid API key.")
     return None
 
 async def read_upload_limited(file: UploadFile, max_bytes: int) -> bytes | None:
     total = 0
     chunks = []
-    chunk_size = 1024 * 1024
     while True:
-        chunk = await file.read(chunk_size)
+        chunk = await file.read(CHUNK_SIZE_BYTES)
         if not chunk:
             break
         total += len(chunk)
@@ -152,7 +152,7 @@ async def analyze_image(
             data = response.json()
         except Exception as e:
             print(f"Connection Error: {str(e)}")
-            return {"success": False, "error": f"Connection Error: {str(e)}"}
+            return {"success": False, "error": "Connection Error: Inference service unavailable."}
 
     if data.get("success") == False:
         return {"success": False, "error": f"Modal Error: {data.get('error', 'Unknown')}"}
@@ -175,5 +175,5 @@ async def analyze_image(
             "heatmap": heatmap_b64
         }
             
-    except KeyError as e:
-        return {"success": False, "error": f"Missing key: {str(e)}", "raw_data": data}
+    except KeyError:
+        return {"success": False, "error": "Missing expected fields in inference response."}
