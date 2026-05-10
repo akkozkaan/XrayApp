@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
@@ -17,7 +18,7 @@ void main() async {
   );
 
   // 3. INITIALIZE REVENUECAT
-  await Purchases.setLogLevel(LogLevel.debug);
+  await Purchases.setLogLevel(kDebugMode ? LogLevel.debug : LogLevel.warn);
   PurchasesConfiguration configuration =
       PurchasesConfiguration("goog_zMYSipEpHgTPBdCqwDdQiTwPYvF");
   await Purchases.configure(configuration);

@@ -69,3 +69,18 @@ Bash
 flutter run
 ⚠️ Medical Disclaimer
 This application is a proof-of-concept and an academic research project. It is not an FDA-approved medical device. The AI-generated heatmaps and reports are strictly for observational and decision-support purposes. Final diagnostic authority always rests with a qualified medical professional.
+
+## 🔐 Security Configuration
+
+Set these environment variables for authenticated backend access:
+
+- `BACKEND_API_KEY`: Shared API key required by `/warmup` and `/analyze` via `X-API-KEY` header.
+- `MAX_UPLOAD_BYTES` (optional): Maximum accepted upload size in bytes for `/analyze` (default: `10485760`).
+
+Flutter clients should pass the same API key at build time (do not hardcode secrets):
+
+```bash
+flutter run --dart-define=BACKEND_API_KEY=your_shared_key
+```
+
+Note: Firebase project IDs, OAuth client IDs, and RevenueCat public SDK keys are designed to be client-visible identifiers and are not treated as backend secrets.
